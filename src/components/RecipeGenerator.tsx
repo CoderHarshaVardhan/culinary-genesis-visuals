@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ChefHat, Clock, Users, Flame } from "lucide-react";
 import { toast } from "sonner";
+import axios from 'axios';
 
 interface Recipe {
   title: string;
@@ -44,72 +44,103 @@ const RecipeGenerator = () => {
 
     setIsGenerating(true);
     
-    // Simulate AI recipe generation
-    setTimeout(() => {
-      const sampleRecipes = [
-        {
-          title: "Mediterranean Pasta Bowl",
-          description: "A fresh and healthy pasta dish combining the best Mediterranean flavors",
-          cookTime: "25 minutes",
-          servings: 4,
-          difficulty: "Easy",
-          ingredients: [
-            ...ingredients,
-            "Olive oil",
-            "Garlic",
-            "Cherry tomatoes",
-            "Fresh basil",
-            "Parmesan cheese"
-          ],
-          instructions: [
-            "Bring a large pot of salted water to boil and cook pasta according to package instructions",
-            "Heat olive oil in a large pan and sauté minced garlic until fragrant",
-            "Add cherry tomatoes and cook until they start to burst",
-            "Add your main ingredients and cook for 5-7 minutes",
-            "Toss with cooked pasta and fresh basil",
-            "Serve with grated Parmesan cheese"
-          ],
-          tips: [
-            "Use high-quality olive oil for the best flavor",
-            "Don't overcook the vegetables to maintain their texture",
-            "Add pasta water if the dish seems too dry"
-          ]
-        },
-        {
-          title: "Hearty Comfort Skillet",
-          description: "A one-pan wonder that brings together your ingredients in perfect harmony",
-          cookTime: "35 minutes",
-          servings: 6,
-          difficulty: "Medium",
-          ingredients: [
-            ...ingredients,
-            "Onions",
-            "Bell peppers",
-            "Garlic powder",
-            "Paprika",
-            "Chicken broth"
-          ],
-          instructions: [
-            "Preheat your oven to 375°F (190°C)",
-            "Heat oil in an oven-safe skillet over medium-high heat",
-            "Sauté onions and peppers until softened",
-            "Add your main ingredients and season with spices",
-            "Pour in chicken broth and bring to a simmer",
-            "Transfer to oven and bake for 20-25 minutes"
-          ],
-          tips: [
-            "Let the dish rest for 5 minutes before serving",
-            "Garnish with fresh herbs for added flavor",
-            "This recipe freezes well for meal prep"
-          ]
-        }
-      ];
+    try {
+      const prompt = `Generate a detailed recipe using these ingredients: ${ingredients.join(', ')}. 
+      Include a creative title, description, cook time, servings, difficulty level, 
+      list of all ingredients needed, step-by-step instructions, and chef's tips. 
+      Format as a complete recipe with all sections.`;
+      
+      const context = `You are a professional chef AI. Create a delicious, well-structured recipe 
+      using the provided ingredients. Include all necessary additional ingredients. 
+      Make the recipe practical with clear instructions and helpful tips. 
+      Structure the response as a complete recipe with title, description, 
+      cooking details, ingredients, instructions, and tips.`;
+      
+      const apiKey = "16t1b3fa04b8866116ccceb0d2do3a04";
+      
+      const response = await axios.get(
+        `https://api.shecodes.io/ai/v1/generate?prompt=${encodeURIComponent(prompt)}&context=${encodeURIComponent(context)}&key=${apiKey}`
+      );
 
-      const randomRecipe = sampleRecipes[Math.floor(Math.random() * sampleRecipes.length)];
-      setGeneratedRecipe(randomRecipe);
-      setIsGenerating(false);
+      // Parse the AI response into our recipe structure
+      const aiResponse = response.data.answer;
+      const parsedRecipe = parseAIResponse(aiResponse);
+      setGeneratedRecipe(parsedRecipe);
       toast.success("Recipe generated successfully!");
-    }, 2000);
+    } catch (error) {
+      console.error("Error generating recipe:", error);
+      toast.error("Failed to generate recipe. Please try again.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Helper function to parse the AI response into our Recipe interface
+  const parseAIResponse = (text: string): Recipe => {
+    // Default values if parsing fails
+    const defaultRecipe: Recipe = {
+      title: "Delicious AI-Generated Recipe",
+      description: "A wonderful dish created just for you",
+      cookTime: "30 minutes",
+      servings: 4,
+      difficulty: "Medium",
+      ingredients: [...ingredients],
+      instructions: [
+        "Combine all ingredients in a pan",
+        "Cook until done",
+        "Serve and enjoy!"
+      ],
+      tips: [
+        "Season to taste",
+        "Adjust cooking time as needed"
+      ]
+    };
+
+    try {
+      // Try to extract structured data from the AI response
+      // This is a basic implementation - you might need to adjust based on actual AI responses
+      const lines = text.split('\n').filter(line => line.trim());
+      
+      // Extract title (first line)
+      const title = lines[0].replace('Title:', '').trim();
+      
+      // Extract description (second line)
+      const description = lines[1].replace('Description:', '').trim();
+      
+      // Find and extract other sections
+      const ingredientsSection = text.match(/Ingredients:([\s\S]*?)Instructions:/)?.[1] || '';
+      const instructionsSection = text.match(/Instructions:([\s\S]*?)Tips:/)?.[1] || '';
+      const tipsSection = text.match(/Tips:([\s\S]*)/)?.[1] || '';
+      
+      // Parse ingredients list
+      const ingredientsList = ingredientsSection.split('\n')
+        .map(line => line.replace(/^[-•*]\s*/, '').trim())
+        .filter(line => line);
+      
+      // Parse instructions
+      const instructionsList = instructionsSection.split('\n')
+        .map(line => line.replace(/^\d+\.\s*/, '').trim())
+        .filter(line => line);
+      
+      // Parse tips
+      const tipsList = tipsSection.split('\n')
+        .map(line => line.replace(/^[-•*]\s*/, '').trim())
+        .filter(line => line);
+      
+      return {
+        title: title || defaultRecipe.title,
+        description: description || defaultRecipe.description,
+        cookTime: "30 minutes", // Could parse this if AI provides it
+        servings: 4, // Could parse this if AI provides it
+        difficulty: "Medium", // Could parse this if AI provides it
+        ingredients: [...new Set([...ingredients, ...ingredientsList])], // Combine user ingredients with AI suggestions
+        instructions: instructionsList.length ? instructionsList : defaultRecipe.instructions,
+        tips: tipsList.length ? tipsList : defaultRecipe.tips
+      };
+    } catch (error) {
+      console.error("Error parsing AI response:", error);
+      return defaultRecipe;
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
